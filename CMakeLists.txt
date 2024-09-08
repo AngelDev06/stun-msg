@@ -1,41 +1,58 @@
-cmake_minimum_required(VERSION 2.6.2)
+cmake_minimum_required(VERSION 3.21)
 
 project(stun-msg)
 
-add_subdirectory(gtest)
+set(PROJECT_IS_TOP_LEVEL)
+if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+  set(PROJECT_IS_TOP_LEVEL ON)
+endif()
 
-config_compiler_and_linker()  # Defined in gtest/cmake/internal_utils.cmake.
-set(CMAKE_C_FLAGS ${CMAKE_CXX_FLAGS})
-set(CMAKE_C_FLAGS_DEBUG ${CMAKE_CXX_FLAGS_DEBUG})
-set(CMAKE_C_FLAGS_RELEASE ${CMAKE_CXX_FLAGS_RELEASE})
-set(CMAKE_C_FLAGS_MINSIZEREL ${CMAKE_CXX_FLAGS_MINSIZEREL})
-set(CMAKE_C_FLAGS_RELWITHDEBINFO ${CMAKE_CXX_FLAGS_RELWITHDEBINFO})
+option(STUNMSG_BUILD_TESTS "Build stunmsg tests" ${PROJECT_IS_TOP_LEVEL})
 
-include_directories(include)
+foreach(SRC "crc32" "hmac_sha1" "sha1" "md5" "stun_msg")
+  list(APPEND STUNMSG_IMPL "src/${SRC}.c")
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/${SRC}.h")
+    list(APPEND STUNMSG_IMPL "src/${SRC}.h")
+  endif()
+endforeach()
 
 add_library(stunmsg STATIC
-  src/crc32.c src/crc32.h
-  src/hmac_sha1.c src/hmac_sha1.h
-  src/sha1.c src/sha1.h
-  src/md5.c src/md5.h
-  src/stun_msg.c include/stun/msg.h
+  ${STUNMSG_IMPL}
+  "include/stun/msg.h"
 )
 
-include_directories(gtest/include src)
+target_include_directories(stunmsg PUBLIC include)
 
-add_executable(stunmsg_tests
-  tests/stunmsg_unittest.cc
-  tests/stunmsgpp_unittest.cc
-  tests/sha1_unittest.cc
-  tests/hmac_sha1_unittest.cc
-  tests/md5_unittest.cc
-  tests/crc32_unittest.cc
-  include/stun++/message.h
-)
+if(STUNMSG_BUILD_TESTS)
+  add_subdirectory(gtest)
 
-add_dependencies(stunmsg_tests stunmsg gtest gtest_main)
-target_link_libraries(stunmsg_tests stunmsg gtest gtest_main)
+  target_compile_definitions(gtest
+  PUBLIC
+    _SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING
+  )
 
-if(WIN32)
-  target_link_libraries(stunmsg_tests Ws2_32)
+  foreach(SRC
+    "stunmsg_unittest" 
+    "stunmsgpp_unittest" 
+    "sha1_unittest" 
+    "hmac_sha1_unittest" 
+    "md5_unittest" 
+    "crc32_unittest"
+  )
+    list(APPEND STUNMSG_TESTS_IMPL "tests/${SRC}.cc")
+  endforeach()
+
+  add_executable(stunmsg_tests
+    ${STUNMSG_TESTS_IMPL}
+    "include/stun++/message.h"
+  )
+
+  target_include_directories(stunmsg_tests PRIVATE gtest/include src)
+  target_link_libraries(stunmsg_tests
+  PRIVATE 
+    stunmsg 
+    gtest 
+    gtest_main
+    $<$<BOOL:${WIN32}>:Ws2_32>
+  )
 endif()
